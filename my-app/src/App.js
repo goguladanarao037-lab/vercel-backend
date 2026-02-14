@@ -1,132 +1,216 @@
-//React-App.js//
 import { useEffect, useState } from "react";
+import { BrowserRouter as Router, Routes, Route, useNavigate, useParams } from "react-router-dom";
 import axios from "axios";
-import { validateUserForm } from "./validation";
+import { FaEdit, FaTrash } from "react-icons/fa"; // icons for edit/delete
+import "./App.css";
 
-function App() {
-  const [users, setUsers] = useState([]);
-  const [form, setForm] = useState({
-    first_name: "",
-    last_name: "",
-    phone: "",
-    email: ""
+// ------------------- FORM SCHEMA -------------------
+const formSchema = [
+  { name: "first_name", label: "First Name", type: "text", required: true },
+  { name: "last_name", label: "Last Name", type: "text", required: true },
+  { name: "phone", label: "Phone", type: "text", required: true },
+  { name: "email", label: "Email", type: "email", required: true },
+  { name: "dob", label: "Date of Birth", type: "date", required: false },
+  { name: "address", label: "Address", type: "text", required: false },
+];
+
+// ------------------- FORM VALIDATION -------------------
+const validateUserForm = (form) => {
+  const errors = {};
+  formSchema.forEach((f) => {
+    if (f.required) {
+      if (!form[f.name] || form[f.name].trim() === "") {
+        errors[f.name] = "This field is required";
+      }
+    }
   });
-  const [editId, setEditId] = useState(null);
+  return errors;
+};
+
+// ------------------- FORMAT DOB -------------------
+const formatDate = (isoString) => {
+  if (!isoString) return "";
+  const date = new Date(isoString);
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const year = String(date.getFullYear()).slice(-2);
+  return `${day}/${month}/${year}`;
+};
+
+// ------------------- USER FORM COMPONENT -------------------
+function UserForm() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+
+  const initialForm = {};
+  formSchema.forEach((f) => {
+    initialForm[f.name] = "";
+  });
+
+  const [form, setForm] = useState(initialForm);
   const [errors, setErrors] = useState({});
+
+  // Fetch existing user if editing
+  useEffect(() => {
+    if (id) {
+      axios
+        .get(`http://localhost:5000/users/${id}`)
+        .then((res) => {
+          const user = res.data;
+          if (user.dob) user.dob = user.dob.split("T")[0]; // keep only date
+          setForm(user);
+        })
+        .catch((err) => console.error(err));
+    }
+  }, [id]);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const errs = validateUserForm(form);
+    if (Object.keys(errs).length > 0) {
+      setErrors(errs);
+      return;
+    }
+
+    try {
+      if (id) {
+        await axios.put(`http://localhost:5000/users/${id}`, form);
+      } else {
+        await axios.post("http://localhost:5000/users", form);
+      }
+      setForm(initialForm);
+      setErrors({});
+      navigate("/users");
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleReset = () => {
+    setForm(initialForm);
+    setErrors({});
+  };
+
+  return (
+    <div className="form-container">
+      <h2>{id ? "Edit User" : "User Form"}</h2>
+      <form onSubmit={handleSubmit}>
+        <table className="form-table">
+          <tbody>
+            {formSchema.map((field) => (
+              <tr key={field.name}>
+                <td>
+                  <label>{field.label}</label>
+                </td>
+                <td>
+                  <input
+                    type={field.type}
+                    placeholder={field.label}
+                    value={form[field.name]}
+                    onChange={(e) => setForm({ ...form, [field.name]: e.target.value })}
+                    className="form-input"
+                  />
+                  {errors[field.name] && <p className="error-text">{errors[field.name]}</p>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        <button type="submit" className="form-button">Submit</button>
+        <button type="button" className="form-button" onClick={handleReset}>Reset</button>
+      </form>
+    </div>
+  );
+}
+
+// ------------------- USER LIST COMPONENT -------------------
+function UserList() {
+  const [users, setUsers] = useState([]);
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchUsers();
   }, []);
 
   const fetchUsers = async () => {
-    const { data } = await axios.get("http://localhost:4500/users");
-    setUsers(data);
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-
-    const errs = validateUserForm(form);
-    if (Object.keys(errs).length) {
-      setErrors(errs);
-      return;
+    try {
+      const { data } = await axios.get("http://localhost:5000/users");
+      setUsers(data);
+    } catch (err) {
+      console.error(err);
     }
-
-    editId
-      ? await axios.put(`http://localhost:4500/users/${editId}`, form)
-      : await axios.post("http://localhost:4500/users", form);
-
-    setForm({ first_name: "", last_name: "", phone: "", email: "" });
-    setEditId(null);
-    setErrors({});
-    fetchUsers();
-  };
-
-  const handleEdit = ({ id, first_name, last_name, phone, email }) => {
-    setForm({ first_name, last_name, phone, email });
-    setEditId(id);
   };
 
   const handleDelete = async (id) => {
-    await axios.delete(`http://localhost:4500/users/${id}`);
-    fetchUsers();
+    try {
+      await axios.delete(`http://localhost:5000/users/${id}`);
+      fetchUsers();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleEdit = (id) => {
+    navigate(`/edit/${id}`);
   };
 
   return (
-    <div style={{ padding: 20 }}>
-      <h2>User Form</h2>
-
-      <form onSubmit={handleSubmit}>
-        <input
-          placeholder="First Name"
-          value={form.first_name}
-          onChange={(e) =>
-            setForm({ ...form, first_name: e.target.value })
-          }
-        />
-        {errors.first_name && <p>{errors.first_name}</p>}
-
-        <input
-          placeholder="Last Name"
-          value={form.last_name}
-          onChange={(e) =>
-            setForm({ ...form, last_name: e.target.value })
-          }
-        />
-        {errors.last_name && <p>{errors.last_name}</p>}
-
-        <input
-          placeholder="Phone"
-          value={form.phone}
-          onChange={(e) =>
-            setForm({ ...form, phone: e.target.value })
-          }
-        />
-        {errors.phone && <p>{errors.phone}</p>}
-
-        <input
-          placeholder="Email"
-          value={form.email}
-          onChange={(e) =>
-            setForm({ ...form, email: e.target.value })
-          }
-        />
-        {errors.email && <p>{errors.email}</p>}
-
-        <button type="submit">
-          {editId ? "Update" : "Add"}
-        </button>
-      </form>
-
+    <div className="form-container">
       <h2>User List</h2>
-      <table border="1">
-        <thead>
-          <tr>
-            <th>First</th>
-            <th>Last</th>
-            <th>Phone</th>
-            <th>Email</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {users.map((u) => (
-            <tr key={u.id}>
-              <td>{u.first_name}</td>
-              <td>{u.last_name}</td>
-              <td>{u.phone}</td>
-              <td>{u.email}</td>
-              <td>
-                <button onClick={() => handleEdit(u)}>Edit</button>
-                <button onClick={() => handleDelete(u.id)}>
-                  Delete
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {users.length > 0 ? (
+        <div className="user-list-wrapper">
+          <table className="user-list-table">
+            <thead>
+              <tr>
+                <th>First Name</th>
+                <th>Last Name</th>
+                <th>Phone</th>
+                <th>Email</th>
+                <th>DOB</th>
+                <th>Address</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {users.map((user) => (
+                <tr key={user.id}>
+                  <td>{user.first_name}</td>
+                  <td>{user.last_name}</td>
+                  <td>{user.phone}</td>
+                  <td>{user.email}</td>
+                  <td>{formatDate(user.dob)}</td>
+                  <td>{user.address}</td>
+                  <td>
+                    <button className="icon-btn edit-btn" onClick={() => handleEdit(user.id)}>
+                      <FaEdit />
+                    </button>
+                    <button className="icon-btn delete-btn" onClick={() => handleDelete(user.id)}>
+                      <FaTrash />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <p>No users found.</p>
+      )}
     </div>
+  );
+}
+
+// ------------------- MAIN APP -------------------
+function App() {
+  return (
+    <Router>
+      <Routes>
+        <Route path="/" element={<UserForm />} />
+        <Route path="/users" element={<UserList />} />
+        <Route path="/edit/:id" element={<UserForm />} />
+      </Routes>
+    </Router>
   );
 }
 
